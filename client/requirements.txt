@@ -1,0 +1,6 @@
+customtkinter>=5.2.2
+requests>=2.31.0
+xxhash>=3.4.1
+pillow>=10.2.0
+darkdetect>=0.8.0
+packaging>=23.0

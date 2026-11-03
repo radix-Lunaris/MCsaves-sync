@@ -1,0 +1,24 @@
+services:
+  mcsync:
+    build: .
+    image: mcsync-server:latest
+    container_name: mcsync
+    restart: unless-stopped
+    ports:
+      - "${HOST_PORT:-8650}:8650"
+    environment:
+      MCSYNC_DATA: /data
+      MCSYNC_PORT: "8650"
+      MCSYNC_VERIFY_BLOB: "${VERIFY_BLOB:-0}"
+      MCSYNC_KEEP_VERSIONS: "${KEEP_VERSIONS:-0}"   # 每个存档保留的版本数，0=不限制
+      MCSYNC_TOKEN: "${MCSYNC_TOKEN:-}"            # 16 位配对口令，留空则容器内自动生成
+      MCSYNC_ALLOW_IPS: "${MCSYNC_ALLOW_IPS:-}"    # IP 白名单，逗号分隔，支持 CIDR
+      MCSYNC_AUTH: "${MCSYNC_AUTH:-1}"
+      TZ: Asia/Shanghai
+    volumes:
+      - ${DATA_DIR:-./data}:/data
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "http://127.0.0.1:8650/api/health"]
+      interval: 30s
+      timeout: 5s
+      retries: 3

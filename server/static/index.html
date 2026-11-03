@@ -1,0 +1,648 @@
+<!DOCTYPE html>
+<html lang="zh-CN" data-theme="dark">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>MCSync 云端管理</title>
+<script>
+/* 首屏前应用主题，避免闪一下白/黑；两套主题变量各自完整声明，
+   不再依赖 :root 缺省值继承，杜绝"半黑半白" */
+try{ document.documentElement.dataset.theme = localStorage.getItem('mcsync_theme') || 'dark'; }catch(e){}
+</script>
+<style>
+:root[data-theme="dark"]{
+  --bg:#0f1218; --bg2:#151a22; --card:#171d26; --card2:#1d242f;
+  --line:#262f3d; --txt:#e6edf6; --txt2:#9aa8bd; --acc:#4f8cff;
+  --warn:#f59e0b; --danger:#ef4444; --ok:#22c55e;
+  --overlay:rgba(128,150,190,.07); --tint:rgba(79,140,255,.15);
+  --radius:14px; --shadow:0 8px 30px rgba(0,0,0,.35);
+  color-scheme:dark;
+}
+:root[data-theme="light"]{
+  --bg:#f4f6fb; --bg2:#eaeef6; --card:#ffffff; --card2:#f3f6fc;
+  --line:#e2e8f2; --txt:#16202e; --txt2:#5a6b83; --acc:#2563eb;
+  --warn:#b45309; --danger:#dc2626; --ok:#16a34a;
+  --overlay:rgba(20,40,80,.055); --tint:rgba(37,99,235,.12);
+  --radius:14px; --shadow:0 8px 24px rgba(20,40,80,.10);
+  color-scheme:light;
+}
+*{box-sizing:border-box;margin:0;padding:0}
+html{background:var(--bg)}
+body{background:var(--bg);color:var(--txt);font:14px/1.6 -apple-system,"Segoe UI","Microsoft YaHei",system-ui,sans-serif;min-height:100vh;-webkit-font-smoothing:antialiased}
+a{color:var(--acc);text-decoration:none}
+.wrap{max-width:1180px;margin:0 auto;padding:22px 18px 60px}
+header{display:flex;align-items:center;gap:14px;flex-wrap:wrap;margin-bottom:20px}
+.logo{display:flex;align-items:center;gap:11px}
+.logo .dot{width:36px;height:36px;border-radius:11px;background:linear-gradient(135deg,var(--acc),#8b5cf6);display:flex;align-items:center;justify-content:center;font-size:19px;box-shadow:var(--shadow)}
+.logo h1{font-size:19px;font-weight:700;letter-spacing:.3px}
+.logo small{display:block;font-size:11px;color:var(--txt2);font-weight:400}
+.spacer{flex:1}
+.btn{border:1px solid var(--line);background:var(--card);color:var(--txt);padding:8px 14px;border-radius:10px;cursor:pointer;font-size:13px;transition:.18s;display:inline-flex;align-items:center;gap:6px;white-space:nowrap}
+.btn:hover{border-color:var(--acc);color:var(--acc);transform:translateY(-1px)}
+.btn.primary{background:var(--acc);border-color:var(--acc);color:#fff}
+.btn.primary:hover{filter:brightness(1.08);color:#fff}
+.btn.danger:hover{border-color:var(--danger);color:var(--danger)}
+.btn:disabled{opacity:.45;cursor:not-allowed;transform:none}
+.cards{display:grid;grid-template-columns:repeat(auto-fit,minmax(155px,1fr));gap:12px;margin-bottom:20px}
+.card{background:var(--card);border:1px solid var(--line);border-radius:var(--radius);padding:15px 16px;box-shadow:var(--shadow)}
+.card .k{font-size:11.5px;color:var(--txt2);letter-spacing:.4px}
+.card .v{font-size:21px;font-weight:700;margin-top:5px;word-break:break-all}
+.panel{background:var(--card);border:1px solid var(--line);border-radius:var(--radius);box-shadow:var(--shadow);overflow:hidden;margin-bottom:18px}
+.panel > .hd{padding:13px 17px;border-bottom:1px solid var(--line);display:flex;align-items:center;gap:10px;flex-wrap:wrap;background:var(--card2)}
+.panel > .hd h2{font-size:14.5px;font-weight:650}
+.panel > .bd{padding:15px 17px}
+.grp{margin:0 0 14px}
+.grp-h{display:flex;align-items:center;gap:8px;font-weight:700;font-size:13px;
+  color:var(--acc);padding:8px 2px 6px;border-bottom:1px solid var(--line);margin-bottom:8px}
+.grp-h .cnt{font-weight:400;font-size:11px;color:var(--muted)}
+.save{border:1px solid var(--line);border-radius:12px;margin-bottom:11px;background:var(--card2);overflow:hidden}
+.save .top{display:flex;align-items:center;gap:12px;padding:13px 15px;cursor:pointer;flex-wrap:wrap}
+.save .nm{font-weight:650;font-size:14.5px;display:flex;align-items:center;gap:8px;min-width:0;word-break:break-all}
+.save .nm .tag{font-size:10.5px;padding:2px 7px;border-radius:20px;background:var(--tint);color:var(--acc);font-weight:600}
+.save .meta{font-size:12px;color:var(--txt2);display:flex;gap:14px;flex-wrap:wrap}
+.vers{display:none;border-top:1px solid var(--line);padding:11px 15px;background:var(--card)}
+.vers.open{display:block}
+.vrow{display:flex;align-items:center;gap:10px;padding:9px 11px;border-radius:9px;font-size:13px;flex-wrap:wrap}
+.vrow + .vrow{margin-top:5px}
+.vrow:nth-child(odd){background:var(--overlay)}
+.vrow .vid{font-weight:650;color:var(--acc);min-width:44px}
+.vrow .vt{color:var(--txt2);font-size:12px}
+.vrow .note{font-size:11.5px;color:var(--warn)}
+.files{margin-top:11px;border-top:1px dashed var(--line);padding-top:11px;max-height:330px;overflow:auto}
+.frow{display:flex;justify-content:space-between;gap:10px;padding:5px 8px;border-radius:7px;font-size:12.5px;font-family:ui-monospace,Menlo,Consolas,monospace}
+.frow:hover{background:var(--overlay)}
+.frow .sz{color:var(--txt2);white-space:nowrap}
+.empty{text-align:center;padding:46px 20px;color:var(--txt2)}
+.empty .ico{font-size:44px;opacity:.5;margin-bottom:10px}
+input,select{background:var(--card2);border:1px solid var(--line);color:var(--txt);padding:8px 11px;border-radius:9px;font-size:13px;outline:none;max-width:100%}
+input:focus,select:focus{border-color:var(--acc)}
+.toast{position:fixed;left:50%;bottom:26px;transform:translateX(-50%) translateY(90px);background:var(--card);border:1px solid var(--acc);color:var(--txt);padding:11px 20px;border-radius:11px;box-shadow:var(--shadow);z-index:99;transition:.28s;font-size:13.5px;max-width:88vw}
+.toast.show{transform:translateX(-50%) translateY(0)}
+.spin{width:15px;height:15px;border:2px solid var(--line);border-top-color:var(--acc);border-radius:50%;animation:sp .7s linear infinite;display:inline-block}
+@keyframes sp{to{transform:rotate(360deg)}}
+.badge{font-size:11px;padding:3px 9px;border-radius:20px;background:var(--tint);color:var(--acc)}
+.badge.warn{background:rgba(245,158,11,.15);color:var(--warn)}
+.cli{display:flex;align-items:center;gap:10px;padding:9px 11px;border-radius:9px;font-size:13px;flex-wrap:wrap;background:var(--overlay);margin-bottom:6px}
+.cli .cid{font-family:ui-monospace,Menlo,Consolas,monospace;font-size:12px;color:var(--txt2);word-break:break-all}
+.mask{position:fixed;inset:0;background:rgba(0,0,0,.55);backdrop-filter:blur(3px);display:none;align-items:center;justify-content:center;z-index:200;padding:20px}
+.mask.show{display:flex}
+.modal{background:var(--card);border:1px solid var(--line);border-radius:16px;box-shadow:var(--shadow);padding:26px 24px;width:100%;max-width:380px}
+.modal h3{font-size:16px;margin-bottom:8px}
+.modal p{font-size:12.5px;color:var(--txt2);margin-bottom:14px;line-height:1.7}
+.modal input{width:100%;font-size:15px;letter-spacing:1px;text-align:center}
+.modal .err{color:var(--danger);font-size:12.5px;margin-top:10px;min-height:18px}
+.modal .row{display:flex;gap:8px;margin-top:14px}
+.modal .row .btn{flex:1;justify-content:center}
+@media(max-width:640px){
+  .wrap{padding:15px 12px 50px}
+  .card .v{font-size:18px}
+  .save .meta{gap:8px;font-size:11.5px}
+  .vrow .note{width:100%}
+}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <div class="logo"><div class="dot">☁</div><div><h1>MCSync 云端管理<small>Minecraft 存档云同步 · 服务端</small></div></div>
+    <div class="spacer"></div>
+    <span id="authBadge" class="badge">—</span>
+    <span id="userBadge" class="badge" style="display:none"></span>
+    <button class="btn" id="btnTheme">🌙 主题</button>
+    <button class="btn" id="btnLogout" style="display:none">退出</button>
+    <button class="btn" id="btnGc" style="display:none">🧹 清理冗余</button>
+    <button class="btn primary" id="btnRefresh">⟳ 刷新</button>
+  </header>
+
+  <div id="connErr" style="display:none"></div>
+
+  <div class="cards" id="cards"></div>
+
+  <div class="panel">
+    <div class="hd"><h2>📦 云端存档</h2><div class="spacer"></div><span id="saveHint" style="font-size:12px;color:var(--txt2)"></span></div>
+    <div class="bd" id="saveList"><div class="empty"><div class="ico">📂</div><span class="spin"></span> 正在连接服务器…</div></div>
+  </div>
+
+  <div class="panel" id="acctPanel" style="display:none">
+    <div class="hd"><h2>👥 账号管理</h2><div class="spacer"></div>
+      <button class="btn primary" id="btnNewAcct">＋ 新建账号</button>
+      <button class="btn" id="btnAcctRefresh">⟳</button></div>
+    <div class="bd" id="acctBox"><div style="color:var(--txt2);font-size:13px"><span class="spin"></span> 正在连接服务器…</div></div>
+  </div>
+
+  <div class="panel">
+    <div class="hd"><h2>🔐 安全</h2><div class="spacer"></div>
+      <button class="btn" id="btnSecRefresh">⟳</button></div>
+    <div class="bd" id="secBox"><div style="color:var(--txt2);font-size:13px"><span class="spin"></span> 正在连接服务器…</div></div>
+  </div>
+</div>
+
+<div class="toast" id="toast"></div>
+
+<!-- 构建标识：由服务端注入，用来确认浏览器拿到的是不是最新页面。
+     旧页面被缓存会请求已变更的接口，是"打开就一直转圈"的常见诱因之一。 -->
+<div id="buildTag" style="text-align:center;color:var(--muted);font-size:11px;padding:14px 0 20px">__BUILD__</div>
+
+<div class="mask" id="loginMask">
+  <div class="modal">
+    <h3 id="loginTitle">🔒 登录</h3>
+    <p id="loginDesc" style="font-size:13px;color:var(--txt2)">用管理员分配给你的账号登录。</p>
+
+    <div id="loginNormal">
+      <input id="loginUser" placeholder="用户名" autocomplete="username" spellcheck="false">
+      <input id="loginPass" type="password" placeholder="口令" autocomplete="current-password">
+    </div>
+
+    <div id="loginBootstrap" style="display:none">
+      <p style="font-size:12px;color:var(--txt2);margin:0 0 8px">
+        还没有任何账号。请用部署时生成的<b>管理员密钥</b>创建第一个管理员，
+        之后就可以用账号登录，并在「账号管理」里给其他人开号。
+      </p>
+      <input id="bsKey" placeholder="管理员密钥（部署生成的 16 位）" autocomplete="off" spellcheck="false">
+      <input id="bsUser" placeholder="管理员用户名" autocomplete="off" spellcheck="false">
+      <input id="bsPass" type="password" placeholder="管理员口令（至少 6 位）">
+      <input id="bsDisplay" placeholder="显示名（可选）" autocomplete="off">
+    </div>
+
+    <div class="err" id="loginErr"></div>
+    <div class="row">
+      <button class="btn primary" id="btnLogin">登录</button>
+    </div>
+  </div>
+</div>
+
+<script>
+const $ = s => document.querySelector(s);
+const API = location.origin;
+let THEME = (()=>{ try{ return localStorage.getItem('mcsync_theme')||'dark'; }catch(e){ return 'dark'; } })();
+document.documentElement.dataset.theme = THEME;
+
+function toast(msg){ const t=$('#toast'); t.textContent=msg; t.classList.add('show'); clearTimeout(t._t); t._t=setTimeout(()=>t.classList.remove('show'),2600); }
+function fmtSize(n){ n=+n||0; const u=['B','KB','MB','GB','TB']; let i=0; while(n>=1024&&i<u.length-1){n/=1024;i++} return (i?n.toFixed(1):Math.round(n))+' '+u[i]; }
+function fmtTime(ts){ if(!ts) return '-'; const d=new Date(ts*1000); const p=x=>String(x).padStart(2,'0'); return `${d.getFullYear()}-${p(d.getMonth()+1)}-${p(d.getDate())} ${p(d.getHours())}:${p(d.getMinutes())}`; }
+function esc(s){return String(s).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));}
+
+/* 当前登录者：{username, role, display}；未登录为 null */
+let ME = null;
+let NEED_BOOTSTRAP = false;
+const isAdmin = () => !!(ME && ME.role === 'admin');
+
+function showLogin(msg){
+  $('#loginErr').textContent = msg||'';
+  $('#loginMask').classList.add('show');
+  if(NEED_BOOTSTRAP){
+    $('#loginTitle').textContent='🛠 创建管理员账号';
+    $('#loginDesc').textContent='这是首次使用，需要先创建管理员账号。';
+    $('#loginNormal').style.display='none';
+    $('#loginBootstrap').style.display='';
+    setTimeout(()=>$('#bsKey').focus(),50);
+  }else{
+    $('#loginTitle').textContent='🔒 登录';
+    $('#loginDesc').textContent='用管理员分配给你的账号登录。';
+    $('#loginNormal').style.display='';
+    $('#loginBootstrap').style.display='none';
+    setTimeout(()=>$('#loginUser').focus(),50);
+  }
+}
+function hideLogin(){ $('#loginMask').classList.remove('show'); $('#loginErr').textContent=''; }
+function logout(){ ME=null; applyRole(); showLogin(''); }
+
+/* 按角色显隐需要管理员权限的入口 */
+function applyRole(){
+  const admin = isAdmin();
+  $('#btnGc').style.display = admin ? '' : 'none';
+  $('#acctPanel').style.display = admin ? '' : 'none';
+  const ub = $('#userBadge');
+  if(ME){
+    ub.style.display='';
+    ub.className = 'badge' + (admin?'':' warn');
+    ub.textContent = (admin?'👑 ':'👤 ') + esc(ME.display||ME.username);
+    $('#btnLogout').style.display='';
+  }else{
+    ub.style.display='none'; $('#btnLogout').style.display='none';
+  }
+}
+
+/* 把"加载中…"占位换成明确的失败说明，避免无限转圈 */
+function setLoadingError(msg){
+  const html = `<div class="empty"><div class="ico">⚠</div>
+    无法加载：${esc(msg||'未知错误')}
+    <div style="margin-top:10px"><button class="btn primary" onclick="location.reload()">⟳ 重试</button></div></div>`;
+  ['saveList','secBox','acctBox'].forEach(id=>{
+    const el = document.getElementById(id);
+    if(el) el.innerHTML = html;
+  });
+}
+
+
+/* 连接错误横幅：把"一直转圈"变成"说清楚哪里不对 + 给操作"。
+   原来的行为是请求挂起就什么都不显示，用户只能干等。 */
+function showConnError(msg){
+  const box = document.getElementById('connErr');
+  if(!box) return;
+  const api = (typeof API !== 'undefined') ? API : location.origin;
+  box.style.display = '';
+  box.innerHTML = `
+    <div style="border:1px solid var(--danger);border-radius:10px;padding:14px 16px;margin-bottom:14px;background:rgba(229,83,75,.08)">
+      <div style="font-weight:700;margin-bottom:6px">⚠ 无法连接服务端</div>
+      <div style="font-size:13px;color:var(--txt2);line-height:1.7;margin-bottom:10px">
+        ${esc(msg||'未知错误')}<br>
+        当前请求地址：<code style="user-select:all">${esc(api)}</code>
+      </div>
+      <div style="font-size:12px;color:var(--txt2);line-height:1.8;margin-bottom:10px">
+        <b>排查顺序：</b><br>
+        1. 端口对不对：在服务器执行 <code>sudo bash deploy.sh --status</code>，
+           以它打印的<b>实际监听端口</b>为准（部署时若端口冲突会自动更换）。<br>
+        2. 服务端是否在运行：<code>systemctl status mcsync</code><br>
+        3. 端口是否放行：云服务器安全组 + <code>ufw</code> <b>都要</b>允许该端口；
+           未放行的端口通常直接丢包（不是拒绝），表现正是"一直转圈"。<br>
+        4. 访问协议是否一致：服务端是 http 就用 http:// 打开，反之亦然。<br>
+        5. <b>本机是否开了代理软件</b>（Clash 等，常见端口 10808/7890）：
+           浏览器走系统代理时，访问云服务器公网 IP 可能被代理拦截而无响应。
+           请把该 IP 加入代理绕过列表，或改用「直连模式」后刷新。
+      </div>
+      <button class="btn primary" onclick="location.reload()">⟳ 重试</button>
+    </div>`;
+}
+function hideConnError(){
+  const box = document.getElementById('connErr');
+  if(box){ box.style.display='none'; box.innerHTML=''; }
+}
+
+/* 请求超时（毫秒）。
+
+为什么必须有：fetch 默认没有超时。服务器不可达、被代理吞掉、端口不通时，
+请求会一直 pending，页面就永远停在"加载中" —— 用户既看不到数据，
+也看不到登录框，更不知道出了什么事。这正是"打开一直是加载中"的根因。
+统一在这里加 AbortController，超时后抛出可读错误并给出排查方向。
+*/
+const REQ_TIMEOUT = 12000;
+
+async function fetchTimeout(u, opt={}, ms=REQ_TIMEOUT){
+  const ctl = new AbortController();
+  const timer = setTimeout(()=>ctl.abort(), ms);
+  try{
+    return await fetch(u, {...opt, signal: ctl.signal});
+  }catch(e){
+    if(e && e.name === 'AbortError'){
+      throw new Error('连接超时：请求在 ' + Math.round(ms/1000) + ' 秒内没有收到响应');
+    }
+    // TypeError: Failed to fetch —— 通常是连不上（端口未放行 / 代理拦截 / 服务未启动）
+    throw new Error('无法连接服务器（可能是端口未放行、代理拦截或服务已停止）');
+  }finally{
+    clearTimeout(timer);
+  }
+}
+
+/* 所有请求带上 same-origin 凭据（会话 Cookie 走这条路） */
+async function req(u, opt={}){
+  opt.credentials = 'same-origin';
+  let r;
+  try{
+    r = await fetchTimeout(u, opt);
+  }catch(e){
+    // 网络层失败也要能被界面感知，不能静默吞掉
+    showConnError(e.message);
+    throw e;
+  }
+  if(r.status===401){ showLogin('登录已失效，请重新登录'); throw new Error('需要登录'); }
+  if(r.status===403){
+    // 已登录但权限不足：不要弹登录框，直接说清楚
+    if(ME && !isAdmin()) throw new Error('需要管理员权限');
+    showLogin('登录已失效或权限不足'); throw new Error('需要登录');
+  }
+  if(r.status===429){ throw new Error('操作过于频繁，请稍后再试'); }
+  if(!r.ok) throw new Error(((await r.json().catch(()=>({}))).error)||r.status);
+  return r.json();
+}
+const jget  = u => req(u);
+const jreq  = (u,m='POST') => req(u,{method:m});
+const jdel  = u => req(u,{method:'DELETE'});
+
+$('#btnTheme').onclick=()=>{
+  THEME = THEME==='dark'?'light':'dark';
+  document.documentElement.dataset.theme=THEME;
+  try{ localStorage.setItem('mcsync_theme',THEME); }catch(e){}
+  $('#btnTheme').textContent = THEME==='dark' ? '🌙 主题' : '☀️ 主题';
+};
+$('#btnTheme').textContent = THEME==='dark' ? '🌙 主题' : '☀️ 主题';
+
+$('#btnRefresh').onclick=load;
+$('#btnSecRefresh').onclick=loadSec;
+$('#btnAcctRefresh').onclick=loadAccounts;
+$('#btnNewAcct').onclick=newAccount;
+$('#btnLogout').onclick=async()=>{
+  try{ await fetchTimeout(API+'/api/web/logout',{method:'POST',credentials:'same-origin'},5000); }catch(e){}
+  logout();
+};
+$('#btnLogin').onclick=doLogin;
+$('#loginPass').onkeydown=e=>{ if(e.key==='Enter') doLogin(); };
+$('#bsDisplay').onkeydown=e=>{ if(e.key==='Enter') doLogin(); };
+
+async function doLogin(){
+  const err = $('#loginErr'); err.textContent='';
+  try{
+    if(NEED_BOOTSTRAP){
+      const body = {admin_key:$('#bsKey').value.trim(), username:$('#bsUser').value.trim(),
+                    password:$('#bsPass').value, display:$('#bsDisplay').value.trim()};
+      if(!body.admin_key||!body.username||!body.password){ err.textContent='请填全 密钥 / 用户名 / 口令'; return; }
+      const r = await fetchTimeout(API+'/api/bootstrap',{method:'POST',credentials:'same-origin',
+        headers:{'Content-Type':'application/json'}, body:JSON.stringify(body)});
+      const j = await r.json().catch(()=>({}));
+      if(!r.ok){ err.textContent = j.detail||j.error||'创建失败'; return; }
+      NEED_BOOTSTRAP = false;
+      $('#bsPass').value='';
+      toast('管理员已创建，请用新账号登录');
+      showLogin(''); return;
+    }
+    const body = {username:$('#loginUser').value.trim(), password:$('#loginPass').value};
+    if(!body.username||!body.password){ err.textContent='请输入用户名与口令'; return; }
+    const r = await fetchTimeout(API+'/api/web/login',{method:'POST',credentials:'same-origin',
+      headers:{'Content-Type':'application/json'}, body:JSON.stringify(body)});
+    const j = await r.json().catch(()=>({}));
+    if(!r.ok){ err.textContent = j.detail||j.error||'登录失败'; return; }
+    ME = j.user; $('#loginPass').value='';
+    hideLogin(); applyRole(); toast('登录成功');
+    if(isAdmin()) loadAccounts();
+    load();
+  }catch(e){ err.textContent='网络错误：'+e.message; }
+}
+
+/* ---------------------------------------------------- 账号管理（管理员） */
+async function loadAccounts(){
+  if(!isAdmin()) return;
+  const box = $('#acctBox');
+  box.innerHTML='<div style="color:var(--txt2);font-size:13px">加载中…</div>';
+  try{
+    const d = await jget(API+'/api/admin/accounts');
+    const rows = (d.accounts||[]);
+    if(!rows.length){ box.innerHTML='<div style="color:var(--txt2);font-size:13px">还没有账号。点右上角「＋ 新建账号」创建。</div>'; return; }
+    box.innerHTML = rows.map(a=>`
+      <div class="cli">
+        <span>${a.role==='admin'?'👑':'👤'} <b>${esc(a.username)}</b>${a.display&&a.display!==a.username?` <span class="cid">${esc(a.display)}</span>`:''}</span>
+        <span class="cid">${a.role==='admin'?'管理员':'普通用户'}${a.disabled?' · 已停用':''}</span>
+        <span class="cid">设备 ${a.devices||0}</span>
+        <span class="cid">最近登录 ${a.last_login?fmtTime(a.last_login):'从未'}</span>
+        <div class="spacer"></div>
+        <button class="btn" onclick="chRole('${esc(a.username)}','${a.role}')">${a.role==='admin'?'降为用户':'升为管理员'}</button>
+        <button class="btn" onclick="chPwd('${esc(a.username)}')">改口令</button>
+        <button class="btn" onclick="chDis('${esc(a.username)}',${a.disabled?'false':'true'})">${a.disabled?'启用':'停用'}</button>
+        <button class="btn danger" onclick="delAcct('${esc(a.username)}')">删除</button>
+      </div>`).join('');
+  }catch(e){ if(e.message!=='需要登录') box.innerHTML=`<div style="color:var(--danger)">读取失败：${esc(e.message)}</div>`; }
+}
+
+/* 必须用函数声明而不是 window.xxx = ...：
+   第 333 行的 $('#btnNewAcct').onclick=newAccount 在这之前执行，
+   写成 window.newAccount = function(){} 时此处还没赋值，直接 ReferenceError，
+   整段脚本在此中断 —— boot() 根本没机会跑，页面就永远停在"正在连接服务器"。
+   函数声明会被提升，且在经典脚本里同样挂到 window 上，内联 onclick 依然可用。 */
+async function newAccount(){
+  const u = prompt('新账号用户名（3~32 位，字母/数字/下划线/点/连字符）：');
+  if(!u) return;
+  const p = prompt('初始口令（至少 6 位）：');
+  if(!p) return;
+  const role = confirm('设为管理员？确定=管理员，取消=普通用户') ? 'admin' : 'user';
+  const disp = prompt('显示名（可留空）：') || '';
+  try{ await req(API+'/api/admin/accounts',{method:'POST',headers:{'Content-Type':'application/json'},
+       body:JSON.stringify({username:u.trim(),password:p,role,display:disp.trim()})});
+       toast('账号已创建'); loadAccounts(); }
+  catch(e){ toast('创建失败：'+e.message); }
+};
+window.chPwd = async function(u){
+  const p = prompt(`为「${u}」设置新口令（至少 6 位）：`);
+  if(!p) return;
+  try{ await req(`${API}/api/admin/accounts/${encodeURIComponent(u)}/password`,{method:'POST',
+       headers:{'Content-Type':'application/json'},body:JSON.stringify({password:p})});
+       toast('口令已更新'); }
+  catch(e){ toast('修改失败：'+e.message); }
+};
+window.chRole = async function(u,cur){
+  const role = cur==='admin' ? 'user' : 'admin';
+  if(!confirm(`确定把「${u}」设为${role==='admin'?'管理员':'普通用户'}？`)) return;
+  try{ await req(`${API}/api/admin/accounts/${encodeURIComponent(u)}/role`,{method:'POST',
+       headers:{'Content-Type':'application/json'},body:JSON.stringify({role})});
+       toast('已更新'); loadAccounts(); }
+  catch(e){ toast('修改失败：'+e.message); }
+};
+window.chDis = async function(u,dis){
+  try{ await req(`${API}/api/admin/accounts/${encodeURIComponent(u)}/disabled`,{method:'POST',
+       headers:{'Content-Type':'application/json'},body:JSON.stringify({disabled:dis})});
+       toast(dis?'已停用':'已启用'); loadAccounts(); }
+  catch(e){ toast('修改失败：'+e.message); }
+};
+window.delAcct = async function(u){
+  if(!confirm(`确定删除账号「${u}」？
+该账号下的设备会一并被踢下线。`)) return;
+  try{ await jdel(`${API}/api/admin/accounts/${encodeURIComponent(u)}`); toast('已删除'); loadAccounts(); }
+  catch(e){ toast('删除失败：'+e.message); }
+};
+
+$('#btnGc').onclick=async()=>{ try{ const r=await jreq(API+'/api/gc'); toast(`清理完成：释放 ${fmtSize(r.freed_bytes)}`); load(); }catch(e){ if(e.message!=='需要登录') toast('清理失败：'+e.message); } };
+
+async function load(){
+  $('#saveList').innerHTML = '<div class="empty"><span class="spin"></span> 加载中…</div>';
+  try{
+    const [st, sv] = await Promise.all([jget(API+'/api/stats'), jget(API+'/api/saves')]);
+    $('#cards').innerHTML = [
+      ['存档数量', st.save_count], ['版本总数', st.version_count],
+      ['数据块', st.blob_count], ['实际占用', fmtSize(st.disk_usage)]
+    ].map(([k,v])=>`<div class="card"><div class="k">${k}</div><div class="v">${v}</div></div>`).join('');
+    render(sv.saves||[]);
+    loadSec();
+  }catch(e){
+    if(e.message!=='需要登录')
+      $('#saveList').innerHTML = `<div class="empty"><div class="ico">⚠️</div>加载失败：${esc(e.message)}</div>`;
+  }
+}
+
+async function loadSec(){
+  const box = $('#secBox');
+  try{
+    const s = await jget(API+'/api/security');
+    $('#authBadge').className = 'badge' + (s.auth_enabled?'':' warn');
+    $('#authBadge').textContent = s.auth_enabled ? '🔒 已启用鉴权' : '⚠️ 未启用鉴权';
+    const cl = s.clients||[];
+    const rows = cl.length ? cl.map(c=>`
+      <div class="cli">
+        <span>💻 ${esc(c.name)}</span>
+        <span class="cid">${esc(c.client_id)}</span>
+        <div class="spacer"></div>
+        <span class="cid">最近 ${fmtTime(c.last_seen)}</span>
+        <button class="btn danger" onclick="revoke('${esc(c.client_id)}')">撤销</button>
+      </div>`).join('')
+      : '<div style="color:var(--txt2);font-size:13px">还没有客户端配对。在 Windows 客户端「设置 → 服务器口令」填入口令即可自动配对。</div>';
+    const ips = (s.allow_ips&&s.allow_ips.length) ? esc(s.allow_ips.join(', ')) : '不限制';
+    box.innerHTML = `
+      <div style="font-size:13px;color:var(--txt2);margin-bottom:10px">
+        鉴权状态：${s.auth_enabled?'<b style="color:var(--ok)">已启用</b>':'<b style="color:var(--warn)">未启用</b>'}
+        ｜ 口令长度 ${s.token_len} 位 ｜ IP 白名单：${ips}
+      </div>
+      <div style="font-size:13px;margin-bottom:8px">已配对客户端（${cl.length}）</div>
+      ${rows}`;
+  }catch(e){
+    if(e.message!=='需要登录') box.innerHTML=`<div style="color:var(--danger)">读取失败：${esc(e.message)}</div>`;
+  }
+}
+
+window.revoke = async function(cid){
+  if(!confirm('撤销该客户端？撤销后它必须重新配对才能继续同步。')) return;
+  try{ await jdel(`${API}/api/security/clients/${encodeURIComponent(cid)}`); toast('已撤销'); loadSec(); }
+  catch(e){ if(e.message!=='需要登录') toast('撤销失败：'+e.message); }
+};
+
+function render(saves){
+  $('#saveHint').textContent = saves.length ? `共 ${saves.length} 个存档` : '';
+  if(!saves.length){ $('#saveList').innerHTML='<div class="empty"><div class="ico">🗂</div>云端还没有存档，用 Windows 客户端上传一个吧</div>'; return; }
+  // 按整合包分组展示：同一整合包的存档归到一起，
+  // 没有整合包信息的老存档归入「未分类」。
+  const groups = new Map();
+  saves.forEach(s=>{
+    const k = (s.instance||'').trim() || '未分类';
+    if(!groups.has(k)) groups.set(k, []);
+    groups.get(k).push(s);
+  });
+  const keys = [...groups.keys()].sort((a,b)=>
+    (a==='未分类')-(b==='未分类') || a.localeCompare(b,'zh'));
+
+  const html = keys.map(k=>{
+    const list = groups.get(k);
+    const icon = k==='未分类' ? '🗂' : '📦';
+    const cards = list.map(s=>`
+      <div class="save" data-name="${esc(s.name)}">
+        <div class="top" onclick="toggleVers(this)">
+          <div class="nm">🗺 ${esc(s.display||s.name)}</div>
+          <div class="spacer"></div>
+          <div class="meta">
+            <span>📄 ${s.file_count} 文件</span><span>💾 ${fmtSize(s.total_size)}</span>
+            <span>🕒 ${fmtTime(s.latest_time)}</span>${s.version_count>1?`<span>🧩 ${s.version_count} 次上传</span>`:''}
+          </div>
+        </div>
+        <div class="vers"></div>
+      </div>`).join('');
+    return `<div class="grp"><div class="grp-h">${icon} ${esc(k)} <span class="cnt">${list.length}</span></div>${cards}</div>`;
+  }).join('');
+  $('#saveList').innerHTML = html;
+}
+
+window.toggleVers = async function(el){
+  const box = el.parentElement.querySelector('.vers');
+  const name = el.parentElement.dataset.name;
+  if(box.classList.contains('open')){ box.classList.remove('open'); box.innerHTML=''; return; }
+  box.classList.add('open'); box.innerHTML='<div style="padding:10px"><span class="spin"></span> 读取版本…</div>';
+  try{
+    const d = await jget(`${API}/api/save/${encodeURIComponent(name)}/versions`);
+    box.innerHTML = (d.versions||[]).slice().reverse().map(v=>`
+      <div class="vrow">
+        <span class="vid">v${v.id}</span>
+        <span class="vt">${fmtTime(v.created_at)}</span>
+        <span class="vt">${v.file_count} 文件 · ${fmtSize(v.total_size)}</span>
+        ${v.note?`<span class="note">${esc(v.note)}</span>`:''}
+        <div class="spacer"></div>
+        <button class="btn" onclick="showFiles('${esc(name)}',${v.id},this)">文件</button>
+        <a class="btn" href="${API}/api/save/${encodeURIComponent(name)}/version/${v.id}/zip">⤓ 下载</a>
+        ${isAdmin()?`<button class="btn" onclick="restore('${esc(name)}',${v.id})">↺ 回滚</button>
+        <button class="btn danger" onclick="delVer('${esc(name)}',${v.id})">🗑</button>`:''}
+      </div>`).join('') + `
+      ${isAdmin()?`<div style="margin-top:9px;display:flex;gap:8px;flex-wrap:wrap">
+        <button class="btn danger" onclick="delSave('${esc(name)}')">🗑 删除整个存档（含全部版本）</button>
+      </div>`:`<div style="margin-top:9px;font-size:12px;color:var(--txt2)">普通用户只读：删除 / 回滚 / 清理需要管理员权限</div>`}`;
+  }catch(e){ if(e.message!=='需要登录') box.innerHTML=`<div style="padding:10px;color:var(--danger)">读取失败：${esc(e.message)}</div>`; }
+};
+
+window.showFiles = async function(name,vid,btn){
+  const row = btn.closest('.vrow');
+  let box = row.parentElement.querySelector('.files');
+  if(box){
+    if(box.dataset.vid == vid){ box.remove(); return; }
+    box.remove();
+  }
+  box = document.createElement('div'); box.className='files'; box.dataset.vid=vid;
+  box.innerHTML='<div style="padding:8px"><span class="spin"></span> 读取清单…</div>';
+  row.parentElement.insertBefore(box, row.nextSibling);
+  try{
+    const m = await jget(`${API}/api/save/${encodeURIComponent(name)}/version/${vid}/manifest`);
+    const files = Object.values(m.files||{}).sort((a,b)=>a.path.localeCompare(b.path));
+    box.innerHTML = `<div style="font-size:12px;color:var(--txt2);margin-bottom:6px">共 ${files.length} 个文件</div>` +
+      files.map(f=>`<div class="frow"><span>${esc(f.path)}</span><span class="sz">${fmtSize(f.size)}</span></div>`).join('');
+  }catch(e){ if(e.message!=='需要登录') box.innerHTML=`<div style="color:var(--danger)">读取失败：${esc(e.message)}</div>`; }
+};
+
+window.restore = async function(name,vid){
+  if(!confirm(`确定把「${name}」回滚到 v${vid}？\n将创建一个内容相同的新版本，历史不会被删除。`)) return;
+  try{ const r=await jreq(`${API}/api/save/${encodeURIComponent(name)}/version/${vid}/restore`); toast(`已回滚，新版本 v${r.version.id}`); load(); }
+  catch(e){ if(e.message!=='需要登录') toast('回滚失败：'+e.message); }
+};
+window.delVer = async function(name,vid){
+  if(!confirm(`确定删除「${name}」的 v${vid}？`)) return;
+  try{ await jdel(`${API}/api/save/${encodeURIComponent(name)}/version/${vid}`); toast('已删除'); load(); }
+  catch(e){ if(e.message!=='需要登录') toast('删除失败：'+e.message); }
+};
+window.delSave = async function(name){
+  if(!confirm(`确定删除整个存档「${name}」（含全部版本）？此操作不可撤销。`)) return;
+  try{ await jdel(`${API}/api/save/${encodeURIComponent(name)}`); toast('已删除存档'); load(); }
+  catch(e){ if(e.message!=='需要登录') toast('删除失败：'+e.message); }
+};
+
+/* 慢连接提示：不必等到超时才知道不对劲。
+   3 秒还没连上就先给个软提示，用户不用对着"正在连接"干等。 */
+let slowTimer = null;
+function armSlowHint(){
+  clearTimeout(slowTimer);
+  slowTimer = setTimeout(()=>{
+    const tag = document.getElementById('buildTag');
+    if(tag) tag.style.color = 'var(--warn)';
+    const el = document.getElementById('saveList');
+    if(el && el.textContent.indexOf('正在连接') >= 0){
+      el.innerHTML = '<div class="empty"><div class="ico" style="opacity:.6">🐢</div>'
+        + '连接较慢…<div style="font-size:12px;color:var(--txt2);margin-top:8px">'
+        + '若持续无响应，通常是端口未放行或本机代理拦截，详见下方提示</div></div>';
+    }
+  }, 3000);
+}
+function disarmSlowHint(){ clearTimeout(slowTimer); }
+
+async function boot(){
+  // 每一步都要有超时和可见反馈。
+  // 旧实现里两个 fetch 都不设超时、catch 还是空的，
+  // 请求一旦挂起就永远停在这里：页面只剩"加载中"三个字，登录框也不弹。
+  armSlowHint();
+  let st = null;
+  try{
+    st = await fetchTimeout(API+'/api/bootstrap/status',{credentials:'same-origin'}, 8000);
+    const b = await st.json();
+    NEED_BOOTSTRAP = !b.initialized;
+  }catch(e){
+    // 连不上：明确报错并可重试，不再干等
+    disarmSlowHint();
+    showConnError(e.message);
+    setLoadingError(e.message);
+    return;
+  }
+  disarmSlowHint();
+  hideConnError();
+
+  try{
+    const m = await fetchTimeout(API+'/api/me',{credentials:'same-origin'}, 8000);
+    if(m.ok){
+      const d = await m.json().catch(()=>({}));
+      if(d.user && d.user.username){
+        ME = d.user; applyRole(); if(isAdmin()) loadAccounts(); load(); return;
+      }
+    }
+  }catch(e){
+    disarmSlowHint();
+    showConnError(e.message);
+    setLoadingError(e.message);
+    return;
+  }
+  // 走到这里说明服务端可达、只是没有有效会话 —— 正常弹登录
+  disarmSlowHint();
+  showLogin('');
+}
+
+boot();
+setInterval(()=>{ if(ME && !document.hidden && !$('#loginMask').classList.contains('show')) load(); }, 60000);
+</script>
+</body>
+</html>
