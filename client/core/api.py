@@ -244,13 +244,36 @@ class Api:
         self.me = res.get("user") or {}
         return res
 
+    def refresh_me(self) -> dict:
+        """用已登记的私钥向服务端取回当前账号信息（含角色、显示名、停用状态）。
+
+        为什么必须有这个方法：
+          self.me 原先只在 login() 里赋值。而启动自动登录时，
+          ensure_login() 发现"已配对"就直接返回、不再调用 login()，
+          于是 self.me 一直是空字典 —— 顶栏把管理员显示成「普通用户」。
+          同时管理员在面板改了角色/停用账号，客户端也一直拿不到最新状态。
+
+        走 /api/me 而不是本地缓存：权限以服务端为准，改动即时生效。
+        """
+        try:
+            res = self._json("GET", "/api/me", timeout=10)
+        except Exception:
+            return self.me
+        u = res.get("user") or {}
+        if u.get("username"):
+            self.me = u
+        return self.me
+
     def ensure_login(self, name: str = "") -> bool:
         """需要登录时自动登录一次；返回是否执行了登录。"""
         self._refresh_cred()
         if not self.username or not self.password:
             return False                      # 未配置账号 -> 服务端可能未开启鉴权
         if self.client_secret and self.paired_server == self.base:
-            return False                      # 已登录且服务器未变
+            # 已登录且服务器未变：不重复登记私钥，但必须刷新一次身份。
+            # 否则 self.me 为空，管理员会被显示成普通用户。
+            self.refresh_me()
+            return False
         self.login(self.username, self.password, name)
         return True
 

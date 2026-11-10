@@ -425,10 +425,12 @@ def main():
     # 后续连接测试会真的去连 10808 代理。这里恢复成直连。
 
     print("[7] 选项卡切换")
-    for k in ("local", "cloud", "log"):
+    for k in ("local", "cloud", "prune", "log"):
         app.show_page(k)
     assert app.cur_page == "log", app.cur_page
-    print("    ✅ 三个选项卡切换正常，当前页:", app.cur_page)
+    assert set(app.pages) >= {"local", "cloud", "prune", "log"}, set(app.pages)
+    assert hasattr(app, "prune_page"), "区块清理页未创建"
+    print("    ✅ 四个选项卡切换正常（含区块清理），当前页:", app.cur_page)
     app.show_page("local")
 
     print("[8] 地址持久化")

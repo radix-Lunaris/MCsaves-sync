@@ -35,7 +35,7 @@ class LoginWindow(ctk.CTkToplevel):
     成功则直接回调，不再显示表单。
     """
 
-    W, H = 460, 520
+    W, H = 460, 560
 
     def __init__(self, on_success, auto: bool = True):
         # 先建主窗口再隐藏，避免 Tk 默认小窗口闪一下
@@ -50,11 +50,11 @@ class LoginWindow(ctk.CTkToplevel):
         self.resizable(False, False)
         self.configure(fg_color=theme.colors().get("bg"))
 
-        self._center()
         self.protocol("WM_DELETE_WINDOW", self._on_close)
         self._set_icon()
 
         self._build()
+        self._fit()
         self.deiconify()
         self.grab_set()
         self.lift()
@@ -78,22 +78,42 @@ class LoginWindow(ctk.CTkToplevel):
         except Exception:
             pass
 
-    def _center(self):
+    def _fit(self):
+        """按实际内容高度定窗口，且永不超过屏幕可用高度。
+
+        之前写死 520 + resizable(False,False)：高 DPI / 大字号 / 小屏笔记本上
+        内容比窗口高，底部按钮和说明被直接裁掉，且窗口不能拉大也滚不动。
+        现在内容放进可滚动容器，窗口高度取「内容所需」与「屏幕可用」的较小值；
+        即使小到放不下，滚动条也能把下面全部露出来。
+        """
         self.update_idletasks()
         sw, sh = self.winfo_screenwidth(), self.winfo_screenheight()
+        try:
+            need = int(self.winfo_reqheight()) + 20
+        except Exception:
+            need = self.H
+        need = max(self.H, need)
+        max_h = max(360, sh - 100)
+        h = min(need, max_h)
         x = max(0, (sw - self.W) // 2)
-        y = max(0, (sh - self.H) // 3)
-        self.geometry(f"{self.W}x{self.H}+{x}+{y}")
+        y = max(0, (sh - h) // 3)
+        self.geometry(f"{self.W}x{h}+{x}+{y}")
 
     def _build(self):
         c = theme.colors()
         sp, fs, rd, sz = ds.SP, ds.FS, ds.RD, ds.SZ
 
-        # 外层：留白遵循 8pt，内容区左右各 32
+        # 外层：留白遵循 8pt，内容区左右各 32。
+        # 用可滚动容器包住全部内容 —— 窗口再小也不会把底部截掉。
+        self.grid_rowconfigure(0, weight=1)
         self.grid_columnconfigure(0, weight=1)
+        self.scroll = ctk.CTkScrollableFrame(self, fg_color="transparent")
+        self.scroll.grid(row=0, column=0, sticky="nsew")
+        self.scroll.grid_columnconfigure(0, weight=1)
+        content = self.scroll
 
         # ---- 头部：品牌区居中，建立第一视觉层级
-        head = ctk.CTkFrame(self, fg_color="transparent")
+        head = ctk.CTkFrame(content, fg_color="transparent")
         head.grid(row=0, column=0, sticky="ew", pady=(sp["xl"], sp["l"]))
         ctk.CTkLabel(head, text="☁", font=theme.font(38),
                      text_color=c["accent"]).pack()
@@ -103,7 +123,7 @@ class LoginWindow(ctk.CTkToplevel):
                      text_color=c["muted"]).pack()
 
         # ---- 表单卡片
-        card = ctk.CTkFrame(self, fg_color=c["surface"], corner_radius=rd["card"],
+        card = ctk.CTkFrame(content, fg_color=c["surface"], corner_radius=rd["card"],
                             border_width=1, border_color=c["line"])
         card.grid(row=1, column=0, sticky="ew", padx=sp["xl"], pady=(0, sp["m"]))
         card.grid_columnconfigure(0, weight=1)
@@ -160,7 +180,7 @@ class LoginWindow(ctk.CTkToplevel):
         self.l_msg.grid(row=row, column=0, sticky="w", padx=sp["m"], pady=(0, sp["m"]))
 
         # ---- 底部：离线也能用
-        foot = ctk.CTkFrame(self, fg_color="transparent")
+        foot = ctk.CTkFrame(content, fg_color="transparent")
         foot.grid(row=2, column=0, sticky="ew", padx=sp["xl"])
         ctk.CTkLabel(foot, text=t("不登录也能管理本地存档，仅云同步功能不可用"),
                      font=theme.font(fs["cap"]), text_color=c["muted"],

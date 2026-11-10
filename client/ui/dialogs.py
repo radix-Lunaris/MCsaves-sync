@@ -146,10 +146,15 @@ class ConflictDialog(_BaseDialog):
 #  版本管理
 # ============================================================================
 class VersionDialog(_BaseDialog):
-    """云端版本列表：下载 / 回滚 / 删除。result = {'action':..., 'vid':...}"""
+    """云端版本列表：下载 / 回滚 / 删除。
+
+    版本 id 只用于接口定位，界面上一律用「上传时间」标识 ——
+    v1/v2 是单个存档内部的序号，跨存档/整合包并排时没有可比性，
+    用户真正关心的是"哪一版是哪天传的"。
+    """
 
     def __init__(self, master, cloud_name: str, versions: List[dict],
-                 on_action: Optional[Callable[[str, int], None]] = None):
+                 on_action: Optional[Callable[[str, int, str], None]] = None):
         super().__init__(master, f"版本管理 · {cloud_name}", 620, 520)
         self.on_action = on_action
         c = theme.colors()
@@ -172,11 +177,11 @@ class VersionDialog(_BaseDialog):
         row = ctk.CTkFrame(box, fg_color="transparent")
         row.grid(row=i, column=0, sticky="ew", padx=8, pady=4)
         row.grid_columnconfigure(1, weight=1)
-        # 版本号只在"某个存档自己的历史"里出现，语义是第几次上传，
-        # 不参与跨存档比较，这里写成「第 N 版」避免误读。
-        ctk.CTkLabel(row, text=f"#{v['id']}", font=theme.font(13, "bold"), width=48).grid(
+        # 主标识 = 上传时间（不再出现 v1 / #1 这类递增序号）
+        vtime = v.get("created_at_str", "") or "—"
+        ctk.CTkLabel(row, text="🕒", font=theme.font(13), width=28).grid(
             row=0, column=0, rowspan=2)
-        ctk.CTkLabel(row, text=v.get("created_at_str", ""), font=theme.font(11), anchor="w").grid(
+        ctk.CTkLabel(row, text=vtime, font=theme.font(12, "bold"), anchor="w").grid(
             row=0, column=1, sticky="w")
         sub = f"{v.get('file_count', 0)} 文件 · {human_size(v.get('total_size', 0))}"
         if v.get("note"):
@@ -184,18 +189,18 @@ class VersionDialog(_BaseDialog):
         ctk.CTkLabel(row, text=sub, font=theme.font(10), text_color=c["muted"], anchor="w").grid(
             row=1, column=1, sticky="w")
         ctk.CTkButton(row, text=t("下载"), width=56, height=26, font=theme.font(11),
-                      command=lambda: self._act("download", v["id"])).grid(row=0, column=2, rowspan=2, padx=3)
+                      command=lambda: self._act("download", v["id"], vtime)).grid(row=0, column=2, rowspan=2, padx=3)
         ctk.CTkButton(row, text=t("回滚"), width=56, height=26, font=theme.font(11),
                       fg_color="transparent", border_width=1, border_color=c["line"], text_color=c["text"],
-                      command=lambda: self._act("restore", v["id"])).grid(row=0, column=3, rowspan=2, padx=3)
+                      command=lambda: self._act("restore", v["id"], vtime)).grid(row=0, column=3, rowspan=2, padx=3)
         ctk.CTkButton(row, text=t("删除"), width=56, height=26, font=theme.font(11),
                       fg_color="transparent", border_width=1, border_color=c["danger"],
                       text_color=c["danger"], hover_color="#7f1d1d",
-                      command=lambda: self._act("delete", v["id"])).grid(row=0, column=4, rowspan=2, padx=3)
+                      command=lambda: self._act("delete", v["id"], vtime)).grid(row=0, column=4, rowspan=2, padx=3)
 
-    def _act(self, action: str, vid: int):
+    def _act(self, action: str, vid: int, vtime: str = ""):
         if self.on_action:
-            self.on_action(action, vid)
+            self.on_action(action, vid, vtime)
         if action in ("download", "restore"):
             self._close()
 
@@ -358,6 +363,7 @@ class SettingsDialog(_BaseDialog):
         self.v_dellocal = ctk.BooleanVar(value=bool(cfg.get("delete_local_on_download", True)))
         self.v_core = ctk.BooleanVar(value=bool(cfg.get("core_only", False)))
         self.v_full = ctk.BooleanVar(value=bool(cfg.get("force_full_hash", False)))
+        self.v_pd = ctk.BooleanVar(value=bool(cfg.get("auto_fix_playerdata", True)))
 
         opts = [
             ("同步前自动备份本地存档（硬链接，几乎不占空间）", self.v_backup),
@@ -365,6 +371,7 @@ class SettingsDialog(_BaseDialog):
             ("下载时：云端删除的文件，本地也删除", self.v_dellocal),
             ("只同步存档核心内容（level.dat / region / DIM / data / datapacks）", self.v_core),
             ("每次都重算哈希（关闭大小+时间预筛，最准但最慢）", self.v_full),
+            (t("上传前自动摘除房主玩家数据（云端存档共享友好）"), self.v_pd),
         ]
         for i, (txt, var) in enumerate(opts):
             ctk.CTkSwitch(f, text=txt, variable=var, font=theme.font(12),
@@ -524,6 +531,10 @@ class SettingsDialog(_BaseDialog):
         cfg.set("delete_local_on_download", bool(self.v_dellocal.get()))
         cfg.set("core_only", bool(self.v_core.get()))
         cfg.set("force_full_hash", bool(self.v_full.get()))
+        try:
+            cfg.set("auto_fix_playerdata", bool(self.v_pd.get()))
+        except Exception:
+            pass
         try:
             cfg.set("keep_backups", max(0, int(self.e_keep.get().strip() or "5")))
         except ValueError:

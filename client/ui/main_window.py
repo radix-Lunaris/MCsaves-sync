@@ -344,6 +344,26 @@ class App(ctk.CTk):
         self._build_log_page(pg3)
         self.pages["log"] = pg3
 
+        # ---- 页4：区块清理（按 InhabitedTime 筛选，默认只预览）
+        pg4 = ctk.CTkFrame(content, fg_color="transparent")
+        pg4.grid(row=0, column=0, sticky="nsew")
+        pg4.grid_rowconfigure(0, weight=1)
+        pg4.grid_columnconfigure(0, weight=1)
+        from ui.prune_page import PrunePage
+        self.prune_page = PrunePage(pg4, self)
+        self.prune_page.grid(row=0, column=0, sticky="nsew")
+        self.pages["prune"] = pg4
+
+        # ---- 页5：玩家数据（解除共享存档里的房主角色数据）
+        pg5 = ctk.CTkFrame(content, fg_color="transparent")
+        pg5.grid(row=0, column=0, sticky="nsew")
+        pg5.grid_rowconfigure(0, weight=1)
+        pg5.grid_columnconfigure(0, weight=1)
+        from ui.playerdata_page import PlayerDataPage
+        self.playerdata_page = PlayerDataPage(pg5, self)
+        self.playerdata_page.grid(row=0, column=0, sticky="nsew")
+        self.pages["playerdata"] = pg5
+
         self.cur_page = "local"
         self.show_page("local")
         return main
@@ -364,7 +384,9 @@ class App(ctk.CTk):
             row=0, column=0, sticky="w", padx=sp["m"], pady=(sp["m"], sp["xs"]))
 
         self.tab_btns: Dict[str, ctk.CTkButton] = {}
-        self.tabs = [("local", "📦", "本地存档"), ("cloud", "☁", "云端存档"), ("log", "📜", "传输日志")]
+        self.tabs = [("local", "📦", "本地存档"), ("cloud", "☁", "云端存档"),
+                     ("prune", "🧹", "区块清理"), ("playerdata", "🪪", "玩家数据"),
+                     ("log", "📜", "传输日志")]
         for i, (key, icon, label) in enumerate(self.tabs):
             b = ctk.CTkButton(
                 bar, text=f"  {icon}  {label}", anchor="w", height=42,
@@ -409,6 +431,17 @@ class App(ctk.CTk):
         # 切到日志页时立刻补齐尚未渲染的内容
         if key == "log":
             self.after(30, self._flush_log)
+        # 切到清理页时把当前实例/存档带过去，不用再选一遍
+        if key == "prune" and hasattr(self, "prune_page"):
+            try:
+                self.prune_page.on_show()
+            except Exception:
+                pass
+        if key == "playerdata" and hasattr(self, "playerdata_page"):
+            try:
+                self.playerdata_page.on_show()
+            except Exception:
+                pass
 
     def _panel(self, master) -> ctk.CTkFrame:
         c = theme.colors()
@@ -973,6 +1006,7 @@ class App(ctk.CTk):
                 self.select_save(saves[0])
             else:
                 self.l_sel.configure(text=f"该实例下没有找到存档（{inst.saves_dir}）")
+                self._sync_prune_if_visible()
             self.log(f"实例「{inst.name}」下发现 {len(saves)} 个存档")
             if quick and saves:
                 self._fill_sizes(saves)
@@ -1036,6 +1070,17 @@ class App(ctk.CTk):
         st = "已同步" if save.synced else "未同步"
         self.l_sel.configure(
             text=f"已选择：{save.display_name}　|　{save.size_text}　|　云端名：{save.cloud_name}　|　{st}")
+        self._sync_prune_if_visible()
+
+    def _sync_prune_if_visible(self):
+        """存档/实例变化时，若正停留在区块清理页就同步下拉与能力检测。"""
+        if getattr(self, "cur_page", "") != "prune" or not hasattr(self, "prune_page"):
+            return
+        try:
+            self.prune_page.sync_selection(self.instances, self.saves,
+                                           self.cur_instance, self.cur_save)
+        except Exception:
+            pass
 
     def open_save_dir(self):
         p = self.cur_save.path if self.cur_save else (self.cur_instance.saves_dir if self.cur_instance else "")
@@ -1226,13 +1271,16 @@ class App(ctk.CTk):
             return self.api.versions(name)
 
         def done(vers):
-            VersionDialog(self, name, vers, on_action=lambda a, v: self._version_action(a, name, v))
+            VersionDialog(self, name, vers,
+                          on_action=lambda a, v, vt: self._version_action(a, name, v, vt))
 
         self.run_async(work, done, lambda e: self.toast(str(e)))
 
-    def _version_action(self, action: str, name: str, vid: int):
+    def _version_action(self, action: str, name: str, vid: int, vtime: str = ""):
+        label = vtime or t("该次上传")
         if action == "delete":
-            dlg = ConfirmDialog(self, "删除版本", f"确定删除「{name}」的 v{vid}？此操作不可撤销。",
+            dlg = ConfirmDialog(self, "删除版本",
+                                f"确定删除「{name}」在 {label} 的这次上传？此操作不可撤销。",
                                 ok_text="删除", danger=True)
             if not dlg.result:
                 return
@@ -1241,7 +1289,8 @@ class App(ctk.CTk):
             return
         if action == "restore":
             self.run_async(lambda: self.api.restore(name, vid),
-                           lambda r: (self.toast(f"已回滚为 v{r['version']['id']}"), self.refresh_cloud()))
+                           lambda r: (self.toast(f"已回滚到 {label} 的上传（新快照已创建）"),
+                                      self.refresh_cloud()))
             return
         if action == "download":
             self.do_download(vid=vid, cloud_name=name)
@@ -1291,10 +1340,11 @@ class App(ctk.CTk):
 
         def done(r):
             self.set_busy(False)
-            self.toast(f"上传完成：v{r['version']} · 实际传输 {human_size(r['uploaded_bytes'])}")
+            vt = r.get("version_time") or t("刚刚")
+            self.toast(f"上传完成（{vt}）· 实际传输 {human_size(r['uploaded_bytes'])}")
             self.load_saves(self.cur_instance)
             self.refresh_cloud()
-            self.progress_reset(f"上传完成 · v{r['version']} · {r['file_count']} 文件 · "
+            self.progress_reset(f"上传完成 · {vt} · {r['file_count']} 文件 · "
                                 f"复用块 {r['reused_chunks']}")
 
         def fail(e):
@@ -1427,9 +1477,10 @@ class App(ctk.CTk):
 
         def done(r):
             self.set_busy(False)
-            self.toast(f"整合包配置已上传：v{r['version']} · {r['file_count']} 个文件")
+            vt = r.get("version_time") or t("刚刚")
+            self.toast(f"整合包配置已上传（{vt}）· {r['file_count']} 个文件")
             self.refresh_cloud()
-            self.progress_reset(f"配置上传完成 · v{r['version']} · {r['file_count']} 文件")
+            self.progress_reset(f"配置上传完成 · {vt} · {r['file_count']} 文件")
 
         def fail(e):
             self.set_busy(False)
@@ -1464,7 +1515,14 @@ class App(ctk.CTk):
 
         def done(r):
             self.set_busy(False)
-            self.toast(f"下载完成：v{r['version']} · 写入 {r['downloaded_files']} 个文件")
+            vt = r.get("version_time") or t("刚刚")
+            pinfo = r.get("playerdata") or {}
+            if pinfo.get("status") == "fixed":
+                self.toast(f"下载完成（{vt}）· 已解除共享玩家数据，进世界会是你自己的角色")
+            elif pinfo.get("status") == "running":
+                self.toast(f"下载完成（{vt}）· 游戏开着，共享玩家数据未处理")
+            else:
+                self.toast(f"下载完成（{vt}）· 写入 {r['downloaded_files']} 个文件")
             # 存档装到了哪个实例，就把界面切到那个实例，
             # 否则用户会以为没下载成功（尤其自动匹配到同名实例时）
             host = self._instance_of_dir(tgt)
@@ -1472,7 +1530,7 @@ class App(ctk.CTk):
                 self.select_instance(host)
             else:
                 self.load_saves(self.cur_instance)
-            self.progress_reset(f"下载完成 · v{r['version']} · 写入 {human_size(r['written_bytes'])} · "
+            self.progress_reset(f"下载完成 · {vt} · 写入 {human_size(r['written_bytes'])} · "
                                 f"跳过未变 {r['unchanged']}")
 
         def fail(e):
@@ -1611,12 +1669,16 @@ class App(ctk.CTk):
             self._log_rendered = max(0, self._log_rendered - drop)
 
     def _prepare_api(self):
-        """配置了账号时，确保本机已在服务器完成登录。"""
+        """配置了账号时，确保本机已在服务器完成登录并取回最新角色。"""
         try:
-            if self.api.ensure_login():
-                who = self.api.me or {}
+            # 已配对时 ensure_login 不再重复登记私钥，但会 refresh_me()，
+            # 保证 self.me 始终有服务端返回的真实角色（管理员改权限即时生效）。
+            did_login = self.api.ensure_login()
+            who = self.api.me or {}
+            if who.get("username"):
                 role = t("管理员") if who.get("role") == "admin" else t("普通用户")
-                self.log(f"已登录：{who.get('display') or self.cfg.get('username','')}（{role}）")
+                prefix = "已登录" if did_login else "身份已确认"
+                self.log(f"{prefix}：{who.get('display') or self.cfg.get('username','')}（{role}）")
         except AuthError as e:
             self.log(f"登录失败：{e}")
         # 顶栏登录区跟着状态走：登录成功要立刻从"表单"切成"已登录身份"
@@ -1707,6 +1769,16 @@ class App(ctk.CTk):
         self.render_instances()
         self.render_saves()
         self.render_cloud()
+        if hasattr(self, "prune_page"):
+            try:
+                self.prune_page.refresh_theme()
+            except Exception:
+                pass
+        if hasattr(self, "playerdata_page"):
+            try:
+                self.playerdata_page.refresh_theme()
+            except Exception:
+                pass
 
     def open_settings(self):
         def saved():

@@ -36,6 +36,7 @@ DEFAULT_IGNORE_RULES: list[str] = [
     "*.temp",
     "*.part",
     "*.bak",
+    "*.spd_backup",          # 共享玩家数据修正时空壳文件的备份，不该反复同步
     # 日志与崩溃报告
     "logs/",
     "crash-reports/",
@@ -67,6 +68,7 @@ CORE_ONLY_INCLUDE: list[str] = [
     "data/",
     "datapacks/",
     "playerdata/",
+    "players/",               # 26.1+ 玩家数据（data / advancements / stats 都在这里）
     "stats/",
     "advancements/",
     "icon.png",

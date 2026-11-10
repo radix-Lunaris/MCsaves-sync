@@ -93,7 +93,10 @@ class SaveInfo:
 
     def badge(self) -> str:
         if self.synced:
-            return f"☁ v{self.state.last_version}"
+            ts = float(self.state.last_sync or 0)
+            when = (time.strftime("%m-%d %H:%M", time.localtime(ts))
+                    if ts else "已同步")
+            return f"☁ {when}"
         return "本地"
 
 
@@ -145,6 +148,11 @@ class SaveState:
     @property
     def last_version(self) -> int:
         return int(self.data.get("last_version", 0) or 0)
+
+    @property
+    def last_sync(self) -> float:
+        """上次同步时间（Unix 时间戳）。界面用它代替 vN 版本序号。"""
+        return float(self.data.get("last_sync", 0) or 0)
 
     @property
     def cloud_name(self) -> str:

@@ -103,34 +103,52 @@ def main():
     check("重扫走 fast_known_scan", "fast_known_scan" in src3, "")
 
     print("\n[B] 窗口显示时机（避免先小后大）")
-    src4 = __import__("inspect").getsource(mw.App.__init__)
-    check("__init__ 开头 withdraw", "self.withdraw()" in src4, "")
-    check("布局完成后 deiconify", "self.deiconify()" in src4, "")
-    i_w = src4.find("self.withdraw()")
-    i_d = src4.find("self.deiconify()")
-    check("顺序正确（先隐藏后显示）", 0 < i_w < i_d, f"{i_w} < {i_d}")
+    # 当前架构：main() 先建主窗口并 withdraw，独立登录窗口结束后
+    # 由 after_login 回调统一 deiconify。断言要跟着实际流程走。
+    import inspect
+    src_main = inspect.getsource(mw.main)
+    check("main() 里先 withdraw 再弹登录", "app.withdraw()" in src_main, "")
+    check("登录成功后才 deiconify", "app.deiconify()" in src_main, "")
+    # deiconify 在「登录成功回调」里，源码位置会早于 LoginWindow 调用，
+    # 不能按文本先后判断，要按回调语义判断。
+    i_cb = src_main.find("def after_login")
+    i_d = src_main.find("app.deiconify()")
+    check("deiconify 位于登录成功回调内",
+          0 <= i_cb < i_d, f"cb={i_cb} deiconify={i_d}")
+    check("回调确实传给登录窗口",
+          "on_success=after_login" in src_main, "")
 
-    print("\n[C] 顶栏独立登录区")
+    print("\n[C] 独立登录窗口 + 顶栏登录入口")
     from ui.main_window import App as _App
     app = _App()
-    check("有服务器地址输入框", hasattr(app, "e_url"), "")
-    check("有账号输入框", hasattr(app, "e_user"), "")
-    check("有口令输入框", hasattr(app, "e_pass"), "")
-    check("有登录按钮", hasattr(app, "b_login"), "")
-    check("有登录态身份标签", hasattr(app, "l_user"), "")
-    check("有重新登录按钮", hasattr(app, "b_logout"), "")
-    check("口令框默认遮蔽", True, "")
+    login_src = ""
+    try:
+        login_src = open(os.path.join(ROOT, "client", "ui", "login_window.py"),
+                         encoding="utf-8").read()
+    except OSError:
+        pass
+    check("存在独立登录窗口模块", "class LoginWindow" in login_src, "")
+    check("登录窗口含账号输入框", "self.e_user" in login_src, "")
+    check("登录窗口含口令输入框", "self.e_pass" in login_src, "")
+    check("登录窗口支持记住口令与自动登录",
+          "remember_password" in login_src and "auto_login" in login_src, "")
+    check("顶栏有登录按钮", hasattr(app, "b_login"), "")
+    check("顶栏有登录态身份标签", hasattr(app, "l_user"), "")
+    check("侧栏含区块清理页", "prune" in [x[0] for x in app.tabs],
+          str(app.tabs))
+    check("区块清理页已创建", hasattr(app, "prune_page"), "")
 
-    print("\n[C2] 登录区可按状态切换")
+    print("\n[C2] 顶栏登录区按状态切换")
     app._refresh_login_row()
-    check("未登录时表单可见", app.login_form is not None, "")
     # 伪造已登录态
     app.api.client_secret = "x" * 32
     app.cfg.set("username", "alice")
     app.api.me = {"display": "Alice", "role": "admin"}
     app._refresh_login_row()
-    check("已登录时显示身份", "Alice" in getattr(app.l_user, "_text", "") or True, "")
-    check("身份含管理员标识", "admin" in str(app.api.me), "")
+    check("切换身份不抛异常", True, "")
+    check("管理员角色取自 me.role",
+          app.api.me.get("role") == "admin" and
+          'who.get("role") == "admin"' in inspect.getsource(mw.App._refresh_login_row), "")
 
     print("\n[C3] 侧栏不再重复品牌标识")
     src5 = __import__("inspect").getsource(mw.App._build_sidebar)

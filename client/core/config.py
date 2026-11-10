@@ -128,6 +128,12 @@ DEFAULTS: Dict[str, Any] = {
     "backup_dir": "",                # 空 = <存档同级>/_MCSyncBackups
     "delete_remote_on_upload": True, # 本地删了 -> 云端也删
     "delete_local_on_download": True,# 云端删了 -> 本地也删
+    # 共享玩家数据：上传前自动摘除 level.dat 里内嵌的房主玩家数据，
+    # 让云端版本天然「共享友好」；下载时再兜底修一次历史版本。
+    "auto_fix_playerdata": True,
+    # 可选：自己的 UUID。填了之后，若内嵌数据本就属于你，则原样保留不动；
+    # 留空时一律走「归档 + 摘除」，对房主同样安全（数据会被归档回来）。
+    "my_uuid": "",
     "keep_versions_hint": 0,
     "window_geometry": "",
 }

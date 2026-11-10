@@ -193,6 +193,29 @@ class SyncEngine:
         for p in subs[keep:]:
             shutil.rmtree(p, ignore_errors=True)
 
+    def _auto_fix_playerdata(self, save_dir: str, stage: str):
+        """上传前 / 下载后自动解除共享玩家数据。
+
+        幂等、失败不影响同步主流程。房主数据会被归档成独立 .dat，
+        房主按自己 UUID 仍读得回来，所以「上传时一律处理」是无损的。
+        """
+        try:
+            from core import playerdata as pd
+            r = pd.fix(save_dir, str(cfg.get("my_uuid", "") or ""))
+        except Exception as e:
+            self.log(f"{stage}共享玩家数据处理跳过：{e}")
+            return None
+        if r.changed:
+            detail = "；".join(r.messages[:1])
+            self.log(f"{stage}已自动摘除房主玩家数据：{r.summary()}"
+                     + (f"（{detail}）" if detail else ""))
+        elif r.status == "running":
+            self.log(f"{stage}共享玩家数据未处理：检测到游戏正在运行")
+        elif r.status == "error":
+            self.log(f"{stage}共享玩家数据处理失败（存档本身不受影响）："
+                     f"{'；'.join(r.messages[:1])}")
+        return r
+
     # ------------------------------------------------------------ 上传
     def upload(self, save_dir: str, cloud_name: str, note: str = "",
                resolver: Optional[Callable[[List[dict]], Dict[str, str]]] = None,
@@ -201,6 +224,11 @@ class SyncEngine:
         self.progress.set_stage("准备上传", file="", error="")
         self._check_not_running(save_dir, "上传")
         self._note_resume(save_dir, cloud_name)
+        # 云端版本天然「共享友好」：上传前就把内嵌的房主玩家数据归档并摘除。
+        # 这样任何人下载后直接是自己的角色，不需要在客户端手动点修复。
+        # 房主数据被归档成 playerdata/<UUID>.dat，一起上传，房主照样读得回。
+        if kind == "save" and cfg.get("auto_fix_playerdata", True) and os.path.isdir(save_dir):
+            self._auto_fix_playerdata(save_dir, "上传前")
         state = SaveState.load(save_dir)
         files = self.scan_local(save_dir, state.files, full_hash=full_hash)
         if not files:
@@ -358,11 +386,17 @@ class SyncEngine:
         state.update(final, int(version.get("id", 0)), cfg.server_url, cloud_name)
         self._clear_resume(save_dir)
         elapsed = time.time() - t0
+        # 版本 id 只用于接口定位，不对用户展示。
+        # 面向用户一律用「上传时间」—— v1/v2/v3 是单个存档内部的序号，
+        # 跨存档/跨整合包并排看时毫无意义，只会让人误以为是全局版本。
+        vtime = (version.get("created_at_str") or
+                 time.strftime("%Y-%m-%d %H:%M", time.localtime()))
         result = {
             "ok": True,
             "direction": "upload",
             "cloud_name": cloud_name,
             "version": version.get("id", 0),
+            "version_time": vtime,
             "file_count": len(final),
             "uploaded_bytes": uploaded_bytes,
             "reused_chunks": len(all_chunks) - initial_missing,
@@ -371,7 +405,7 @@ class SyncEngine:
             "elapsed": elapsed,
         }
         self.log(
-            f"上传完成：云端版本 v{result['version']}，{len(final)} 个文件，"
+            f"上传完成（{vtime}）：{len(final)} 个文件，"
             f"实际上传 {human_size(uploaded_bytes)}，耗时 {elapsed:.1f}s"
         )
         return result
@@ -450,7 +484,8 @@ class SyncEngine:
     # ------------------------------------------------------------ 下载
     def download(self, save_dir: str, cloud_name: str, vid: Optional[int] = None,
                  resolver: Optional[Callable[[List[dict]], Dict[str, str]]] = None,
-                 to_new_dir: bool = False) -> dict:
+                 to_new_dir: bool = False,
+                 auto_fix_playerdata: Optional[bool] = None) -> dict:
         t0 = time.time()
         self.progress.set_stage("获取云端版本", file="", error="")
         if os.path.isdir(save_dir):
@@ -588,14 +623,46 @@ class SyncEngine:
                                  "chunks": cf.get("chunks", []), "pieces": cf.get("pieces", [])}
                            for rel, cf in cloud_files.items()}
         state.update(new_state_files, vid, cfg.server_url, cloud_name)
+
+        # ---- 兜底：历史云端版本若仍带内嵌房主数据，下载后自动修一次 ----
+        # 主路径已改在「上传前」处理，正常情况下这里走 already_clean。
+        pd_result = None
+        want_fix = (cfg.get("auto_fix_playerdata", True)
+                    if auto_fix_playerdata is None else auto_fix_playerdata)
+        if want_fix and os.path.isdir(save_dir):
+            pd_result = self._auto_fix_playerdata(save_dir, "下载后")
+            if pd_result and pd_result.changed:
+                # 只更新「云端清单里本来就有」的文件哈希。
+                # 新生成的归档 .dat 不写进 state：否则它不在云端清单里，
+                # 下次下载会被当成「云端已删除」而误删；不写进去则会在
+                # 下次上传时被 scan_local 自然发现并同步上去。
+                for rel in pd_result.files_changed:
+                    if rel not in new_state_files:
+                        continue
+                    fp = safe_join(save_dir, rel)
+                    if not os.path.isfile(fp):
+                        continue
+                    stt = os.stat(fp)
+                    new_state_files[rel] = {
+                        "size": stt.st_size, "mtime": stt.st_mtime,
+                        "hash": file_hash(fp), "chunks": [], "pieces": []}
+                state.update(new_state_files, vid, cfg.server_url, cloud_name)
         self.clean_cache()
 
+        # 用该版本的上传时间作为面向用户的标识，不再显示 vN
+        _vt = ""
+        for _v in (vers or []):
+            if int(_v.get("id", 0)) == int(vid):
+                _vt = _v.get("created_at_str") or ""
+                break
+        vtime = _vt or time.strftime("%Y-%m-%d %H:%M", time.localtime())
         elapsed = time.time() - t0
         result = {
             "ok": True,
             "direction": "download",
             "cloud_name": cloud_name,
             "version": vid,
+            "version_time": vtime,
             "file_count": len(cloud_files),
             "downloaded_files": len(need),
             "written_bytes": written,
@@ -604,10 +671,14 @@ class SyncEngine:
             "deleted_local": len(to_delete_local),
             "conflicts": len(conflicts),
             "backup": backup_path,
+            "playerdata": ({"status": pd_result.status,
+                            "summary": pd_result.summary(),
+                            "owner": pd_result.owner_uuid,
+                            "messages": pd_result.messages} if pd_result else None),
             "elapsed": elapsed,
         }
         self.log(
-            f"下载完成：v{vid}，写入 {len(need)} 个文件（{human_size(written)}），"
+            f"下载完成（{vtime}）：写入 {len(need)} 个文件（{human_size(written)}），"
             f"跳过未变化 {unchanged}，耗时 {elapsed:.1f}s"
         )
         return result
@@ -662,6 +733,8 @@ class SyncEngine:
     # ------------------------------------------------------------ 云端回滚
     def restore_remote(self, cloud_name: str, vid: int) -> dict:
         r = self.api.restore(cloud_name, vid)
-        self.log(f"云端已回滚，生成新版本 v{r['version']['id']}")
+        _v = r.get("version") or {}
+        _t = _v.get("created_at_str") or time.strftime("%Y-%m-%d %H:%M", time.localtime())
+        self.log(f"云端已回滚，已生成 {_t} 的新快照")
         return r
 

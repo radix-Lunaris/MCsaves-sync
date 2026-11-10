@@ -98,6 +98,15 @@ def main():
     check("关闭窗口也走同一收尾", "_on_close" in src and "_finish" in src, "")
     check("收尾会释放 grab", "grab_release" in src, "")
 
+    print("\n[4.5] 登录窗口不会把下半截裁掉")
+    check("内容放进可滚动容器", "CTkScrollableFrame" in src, "")
+    check("表单卡片与底部都挂在容器上",
+          src.count("ctk.CTkFrame(content") >= 3,
+          str(src.count("ctk.CTkFrame(content")))
+    check("按实际内容自适应高度", "def _fit" in src and "winfo_reqheight" in src, "")
+    check("高度受屏幕可用高度限制", "min(need, max_h)" in src, "")
+    check("不再构建前写死 520", "self._center()" not in src, "")
+
     print("\n[5] 口令不落明文")
     cfg.set_secret("Pw-123456", "password")
     check("可存可取", cfg.get_secret("password") == "Pw-123456", "")

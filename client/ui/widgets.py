@@ -19,6 +19,7 @@
 from __future__ import annotations
 
 import os
+import time
 from typing import Callable, Optional
 
 import customtkinter as ctk
@@ -182,7 +183,12 @@ class SaveCard(Card):
         right = ctk.CTkFrame(self, fg_color="transparent")
         right.grid(row=0, column=2, rowspan=3, padx=(4, 10))
         if save.synced:
-            pill(right, f"☁ 已同步 v{save.state.last_version}", c["ok"]).pack(anchor="e", pady=(10, 3))
+            # 显示上次同步时间，不再显示 vN —— 版本序号是存档内部概念，
+            # 多个整合包并排时没有可比性，用户关心的是"这存档哪天传的"。
+            _ts = float(getattr(save.state, "last_sync", 0) or 0)
+            _when = (time.strftime("%m-%d %H:%M", time.localtime(_ts))
+                     if _ts else human_time_ago(0))
+            pill(right, f"☁ 已同步 · {_when}", c["ok"]).pack(anchor="e", pady=(10, 3))
         else:
             pill(right, t("未同步"), c["muted"]).pack(anchor="e", pady=(10, 3))
         ctk.CTkLabel(right, text=f"{save.file_count if save.file_count >= 0 else '—'} 文件",

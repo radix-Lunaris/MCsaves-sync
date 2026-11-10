@@ -65,7 +65,7 @@ header{display:flex;align-items:center;gap:14px;flex-wrap:wrap;margin-bottom:20p
 .vrow{display:flex;align-items:center;gap:10px;padding:9px 11px;border-radius:9px;font-size:13px;flex-wrap:wrap}
 .vrow + .vrow{margin-top:5px}
 .vrow:nth-child(odd){background:var(--overlay)}
-.vrow .vid{font-weight:650;color:var(--acc);min-width:44px}
+.vrow .vid{font-weight:650;color:var(--acc);min-width:130px;white-space:nowrap}
 .vrow .vt{color:var(--txt2);font-size:12px}
 .vrow .note{font-size:11.5px;color:var(--warn)}
 .files{margin-top:11px;border-top:1px dashed var(--line);padding-top:11px;max-height:330px;overflow:auto}
@@ -534,15 +534,16 @@ window.toggleVers = async function(el){
     const d = await jget(`${API}/api/save/${encodeURIComponent(name)}/versions`);
     box.innerHTML = (d.versions||[]).slice().reverse().map(v=>`
       <div class="vrow">
-        <span class="vid">v${v.id}</span>
-        <span class="vt">${fmtTime(v.created_at)}</span>
+        <!-- 版本 id 只用于接口定位；面向用户一律用上传时间标识。
+             v1/v2 是单个存档内部的序号，跨存档/整合包并排时没有可比性。 -->
+        <span class="vid">🕒 ${fmtTime(v.created_at)}</span>
         <span class="vt">${v.file_count} 文件 · ${fmtSize(v.total_size)}</span>
         ${v.note?`<span class="note">${esc(v.note)}</span>`:''}
         <div class="spacer"></div>
         <button class="btn" onclick="showFiles('${esc(name)}',${v.id},this)">文件</button>
         <a class="btn" href="${API}/api/save/${encodeURIComponent(name)}/version/${v.id}/zip">⤓ 下载</a>
-        ${isAdmin()?`<button class="btn" onclick="restore('${esc(name)}',${v.id})">↺ 回滚</button>
-        <button class="btn danger" onclick="delVer('${esc(name)}',${v.id})">🗑</button>`:''}
+        ${isAdmin()?`<button class="btn" onclick="restore('${esc(name)}',${v.id},'${fmtTime(v.created_at)}')">↺ 回滚</button>
+        <button class="btn danger" onclick="delVer('${esc(name)}',${v.id},'${fmtTime(v.created_at)}')">🗑</button>`:''}
       </div>`).join('') + `
       ${isAdmin()?`<div style="margin-top:9px;display:flex;gap:8px;flex-wrap:wrap">
         <button class="btn danger" onclick="delSave('${esc(name)}')">🗑 删除整个存档（含全部版本）</button>
@@ -568,13 +569,15 @@ window.showFiles = async function(name,vid,btn){
   }catch(e){ if(e.message!=='需要登录') box.innerHTML=`<div style="color:var(--danger)">读取失败：${esc(e.message)}</div>`; }
 };
 
-window.restore = async function(name,vid){
-  if(!confirm(`确定把「${name}」回滚到 v${vid}？\n将创建一个内容相同的新版本，历史不会被删除。`)) return;
-  try{ const r=await jreq(`${API}/api/save/${encodeURIComponent(name)}/version/${vid}/restore`); toast(`已回滚，新版本 v${r.version.id}`); load(); }
+window.restore = async function(name,vid,vt){
+  const label = vt || '该次上传';
+  if(!confirm(`确定把「${name}」回滚到 ${label} 的上传？\n将创建一个内容相同的新快照，历史不会被删除。`)) return;
+  try{ await jreq(`${API}/api/save/${encodeURIComponent(name)}/version/${vid}/restore`); toast(`已回滚到 ${label} 的上传`); load(); }
   catch(e){ if(e.message!=='需要登录') toast('回滚失败：'+e.message); }
 };
-window.delVer = async function(name,vid){
-  if(!confirm(`确定删除「${name}」的 v${vid}？`)) return;
+window.delVer = async function(name,vid,vt){
+  const label = vt || '该次上传';
+  if(!confirm(`确定删除「${name}」在 ${label} 的这次上传？`)) return;
   try{ await jdel(`${API}/api/save/${encodeURIComponent(name)}/version/${vid}`); toast('已删除'); load(); }
   catch(e){ if(e.message!=='需要登录') toast('删除失败：'+e.message); }
 };
