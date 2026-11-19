@@ -1,0 +1,9 @@
+# 全项目 UI 统一基于 customtkinter 6.0.0 编写，版本固定，不再切换。
+# 历史问题（int+str / bad window path name）源于项目代码误用了 tkinter
+# 保留属性 self._w，与 CTk 版本无关，已在 ui/dialogs.py 中修正。
+customtkinter==6.0.0
+requests>=2.31.0
+xxhash>=3.4.1
+pillow>=10.2.0
+darkdetect>=0.8.0
+packaging>=23.0
